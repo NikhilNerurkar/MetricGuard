@@ -73,3 +73,38 @@ PRODUCT_CONFIGS = {
 }
 
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "data" / "raw"
+
+
+def _generate_canonical_events(
+    n: int, surfaces: list[str], rng: np.random.Generator, now: datetime
+) -> pd.DataFrame:
+    event_types = rng.choice(EVENT_TYPES, size=n, p=EVENT_TYPE_WEIGHTS)
+
+    offsets_seconds = rng.uniform(0, LOOKBACK_DAYS * 86400, size=n)
+    timestamps = [now - timedelta(seconds=float(s)) for s in offsets_seconds]
+
+    country_idx = rng.integers(0, len(COUNTRIES), size=n)
+    countries = [COUNTRIES[i] for i in country_idx]
+
+    durations = rng.lognormal(mean=4.5, sigma=1.0, size=n)
+    bot_scores = rng.beta(2, 8, size=n)
+    surface_choices = rng.choice(surfaces, size=n)
+    user_ids = rng.integers(100_000, 999_999, size=n)
+
+    raw_bytes = rng.bytes(16 * n)
+    event_ids = [
+        str(uuid.UUID(bytes=raw_bytes[i * 16 : (i + 1) * 16])) for i in range(n)
+    ]
+
+    return pd.DataFrame(
+        {
+            "event_id": event_ids,
+            "user_id": user_ids,
+            "event_type": event_types,
+            "timestamp": timestamps,
+            "country_code": countries,
+            "session_duration_seconds": durations,
+            "bot_probability_score": bot_scores,
+            "product_surface": surface_choices,
+        }
+    )
