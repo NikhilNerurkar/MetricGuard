@@ -158,3 +158,47 @@ def _apply_schema_drift(
     ]
     order = config["column_order"] or canonical_order
     return df[order]
+
+
+def _inject_messiness(
+    df: pd.DataFrame, config: dict, rng: np.random.Generator
+) -> pd.DataFrame:
+    df = df.reset_index(drop=True).copy()
+    n = len(df)
+    id_col = config["id_col"]
+    country_col = "country_code"
+    duration_col = _CANONICAL_DURATION_COL
+    timestamp_col = "timestamp"
+
+    dup_count = max(1, int(n * 0.01))
+    dup_targets = rng.choice(n, size=dup_count, replace=False)
+    dup_sources = rng.choice(n, size=dup_count, replace=False)
+    df.loc[dup_targets, id_col] = df.loc[dup_sources, id_col].values
+
+    null_count = max(1, int(n * 0.02))
+    df.loc[rng.choice(n, size=null_count, replace=False), country_col] = np.nan
+    df.loc[rng.choice(n, size=null_count, replace=False), duration_col] = np.nan
+
+    outlier_count = max(1, int(n * 0.01))
+    outlier_idx = rng.choice(n, size=outlier_count, replace=False)
+    outlier_values = rng.choice([-1, -60, 750_000, 900_000], size=outlier_count)
+    df[duration_col] = df[duration_col].astype("float64")
+    df.loc[outlier_idx, duration_col] = outlier_values.astype("float64")
+
+    reorder_count = max(1, int(n * 0.01))
+    reorder_idx = rng.choice(n, size=reorder_count, replace=False)
+    shift_days = rng.integers(7, 30, size=reorder_count)
+    if config["timestamp_style"] == "epoch":
+        df[timestamp_col] = df[timestamp_col].astype("int64")
+        shifted_epochs = pd.Series(
+            df.loc[reorder_idx, timestamp_col].values - shift_days * 86400,
+            index=reorder_idx,
+            dtype="int64"
+        )
+        df.loc[reorder_idx, timestamp_col] = shifted_epochs
+    else:
+        parsed = pd.to_datetime(df.loc[reorder_idx, timestamp_col])
+        shifted = parsed - pd.to_timedelta(shift_days, unit="D")
+        df.loc[reorder_idx, timestamp_col] = shifted.dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    return df

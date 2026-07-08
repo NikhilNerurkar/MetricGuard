@@ -112,3 +112,51 @@ def test_threads_schema_drift():
     assert drifted["country_code"].apply(len).eq(3).all()
     non_session_mask = ~drifted["event_type"].isin(["session_start", "session_end"])
     assert drifted.loc[non_session_mask, "session_duration_seconds"].isna().all()
+
+
+from etl.generate_synthetic_data import _inject_messiness
+
+
+def _make_drifted_df(product, n=1000, seed=2):
+    rng = np.random.default_rng(seed)
+    config = PRODUCT_CONFIGS[product]
+    canonical = _generate_canonical_events(n, config["surfaces"], rng, FIXED_NOW)
+    drifted = _apply_schema_drift(canonical, product, config, rng)
+    return drifted, config, rng
+
+
+def test_messiness_injects_duplicate_ids():
+    df, config, rng = _make_drifted_df("facebook")
+    messy = _inject_messiness(df, config, rng)
+    assert messy[config["id_col"]].duplicated().sum() >= 1
+
+
+def test_messiness_injects_nulls():
+    df, config, rng = _make_drifted_df("facebook")
+    messy = _inject_messiness(df, config, rng)
+    assert messy["country_code"].isna().sum() >= 1
+    assert messy["session_duration_seconds"].isna().sum() >= 1
+
+
+def test_messiness_injects_duration_outliers():
+    df, config, rng = _make_drifted_df("facebook")
+    messy = _inject_messiness(df, config, rng)
+    durations = messy["session_duration_seconds"].dropna()
+    assert (durations < 0).any() or (durations > 500_000).any()
+
+
+def test_messiness_injects_out_of_order_timestamps_iso_product():
+    df, config, rng = _make_drifted_df("facebook")
+    messy = _inject_messiness(df, config, rng)
+    parsed = pd.to_datetime(messy["timestamp"])
+    earliest_allowed = FIXED_NOW - timedelta(days=LOOKBACK_DAYS)
+    # Convert to tz-naive for comparison since ISO strings don't have tz info
+    earliest_naive = earliest_allowed.replace(tzinfo=None)
+    assert (parsed < earliest_naive).any()
+
+
+def test_messiness_injects_out_of_order_timestamps_epoch_product():
+    df, config, rng = _make_drifted_df("instagram")
+    messy = _inject_messiness(df, config, rng)
+    earliest_allowed_epoch = int((FIXED_NOW - timedelta(days=LOOKBACK_DAYS)).timestamp())
+    assert (messy["timestamp"] < earliest_allowed_epoch).any()
