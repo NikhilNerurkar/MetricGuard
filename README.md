@@ -314,5 +314,5 @@ python demo/demo.py
 
 ---
 
-*Built by Nikhil Nerurkar — MBAn candidate, University of Maryland (Dec 2026)*  
+*Built by Nikhil Nerurkar — MSBA candidate, University of Maryland (Dec 2026)*  
 *Contact: nnerurka@umd.edu | [LinkedIn](https://linkedin.com/in/nikhilnerurkar)*
