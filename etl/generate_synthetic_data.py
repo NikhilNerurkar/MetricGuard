@@ -108,3 +108,55 @@ def _generate_canonical_events(
             "product_surface": surface_choices,
         }
     )
+
+
+_CANONICAL_DURATION_COL = "session_duration_seconds"
+
+
+def _apply_schema_drift(
+    df: pd.DataFrame, product: str, config: dict, rng: np.random.Generator
+) -> pd.DataFrame:
+    df = df.copy()
+
+    if config["id_style"] == "int_sequential":
+        df["event_id"] = np.arange(1, len(df) + 1, dtype=np.int64)
+    if config["id_col"] != "event_id":
+        df = df.rename(columns={"event_id": config["id_col"]})
+
+    if config["user_style"] == "ig_string":
+        df["user_id"] = df["user_id"].apply(lambda uid: f"ig_{uid % 1_000_000:06d}")
+    if config["user_col"] != "user_id":
+        df = df.rename(columns={"user_id": config["user_col"]})
+
+    if config["timestamp_style"] == "epoch":
+        df["timestamp"] = df["timestamp"].apply(lambda ts: int(ts.timestamp()))
+    else:
+        df["timestamp"] = df["timestamp"].apply(
+            lambda ts: ts.strftime("%Y-%m-%dT%H:%M:%S")
+        )
+
+    if config["country_style"] == "iso2":
+        df["country_code"] = df["country_code"].apply(lambda c: c[0])
+    elif config["country_style"] == "iso3":
+        df["country_code"] = df["country_code"].apply(lambda c: c[1])
+    elif config["country_style"] == "mixed":
+        use_iso2 = rng.random(len(df)) < 0.5
+        df["country_code"] = [
+            c[0] if flag else c[2] for c, flag in zip(df["country_code"], use_iso2)
+        ]
+
+    if config["duration_style"] == "int":
+        df[_CANONICAL_DURATION_COL] = (
+            df[_CANONICAL_DURATION_COL].round().astype("int64")
+        )
+    elif config["duration_style"] == "float_null_nonsession":
+        is_session = df["event_type"].isin(["session_start", "session_end"])
+        df.loc[~is_session, _CANONICAL_DURATION_COL] = np.nan
+
+    canonical_order = [
+        config["id_col"], config["user_col"], "event_type", "timestamp",
+        "country_code", _CANONICAL_DURATION_COL,
+        "bot_probability_score", "product_surface",
+    ]
+    order = config["column_order"] or canonical_order
+    return df[order]
