@@ -146,9 +146,7 @@ def _apply_schema_drift(
         ]
 
     if config["duration_style"] == "int":
-        df[_CANONICAL_DURATION_COL] = (
-            df[_CANONICAL_DURATION_COL].round().astype("int64")
-        )
+        df[_CANONICAL_DURATION_COL] = df[_CANONICAL_DURATION_COL].astype("int64")
     elif config["duration_style"] == "float_null_nonsession":
         is_session = df["event_type"].isin(["session_start", "session_end"])
         df.loc[~is_session, _CANONICAL_DURATION_COL] = np.nan
