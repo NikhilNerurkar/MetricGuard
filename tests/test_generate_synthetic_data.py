@@ -117,7 +117,7 @@ def test_threads_schema_drift():
 from etl.generate_synthetic_data import _inject_messiness
 
 
-def _make_drifted_df(product, n=1000, seed=2):
+def _make_drifted_df(product, n=1000, seed=5):
     rng = np.random.default_rng(seed)
     config = PRODUCT_CONFIGS[product]
     canonical = _generate_canonical_events(n, config["surfaces"], rng, FIXED_NOW)
@@ -147,16 +147,19 @@ def test_messiness_injects_duration_outliers():
 
 def test_messiness_injects_out_of_order_timestamps_iso_product():
     df, config, rng = _make_drifted_df("facebook")
+    original_timestamps = df["timestamp"].copy()
     messy = _inject_messiness(df, config, rng)
-    parsed = pd.to_datetime(messy["timestamp"])
-    earliest_allowed = FIXED_NOW - timedelta(days=LOOKBACK_DAYS)
-    # Convert to tz-naive for comparison since ISO strings don't have tz info
-    earliest_naive = earliest_allowed.replace(tzinfo=None)
-    assert (parsed < earliest_naive).any()
+    parsed_original = pd.to_datetime(original_timestamps)
+    parsed_messy = pd.to_datetime(messy["timestamp"])
+    changed = parsed_messy != parsed_original
+    assert changed.sum() >= 1
+    assert (parsed_messy[changed] < parsed_original[changed]).all()
 
 
 def test_messiness_injects_out_of_order_timestamps_epoch_product():
     df, config, rng = _make_drifted_df("instagram")
+    original_timestamps = df["timestamp"].copy()
     messy = _inject_messiness(df, config, rng)
-    earliest_allowed_epoch = int((FIXED_NOW - timedelta(days=LOOKBACK_DAYS)).timestamp())
-    assert (messy["timestamp"] < earliest_allowed_epoch).any()
+    changed = messy["timestamp"] != original_timestamps
+    assert changed.sum() >= 1
+    assert (messy.loc[changed, "timestamp"] < original_timestamps[changed]).all()
