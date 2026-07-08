@@ -163,3 +163,34 @@ def test_messiness_injects_out_of_order_timestamps_epoch_product():
     changed = messy["timestamp"] != original_timestamps
     assert changed.sum() >= 1
     assert (messy.loc[changed, "timestamp"] < original_timestamps[changed]).all()
+
+
+from etl.generate_synthetic_data import (
+    generate_product_events, main, ROW_COUNT_RANGE, SEED,
+)
+
+
+def test_generate_product_events_row_count_in_range():
+    rng = np.random.default_rng(SEED)
+    df = generate_product_events("facebook", rng, now=FIXED_NOW)
+    assert ROW_COUNT_RANGE[0] <= len(df) <= ROW_COUNT_RANGE[1]
+
+
+def test_main_writes_three_parquet_files(tmp_path):
+    main(output_dir=tmp_path)
+    for product in PRODUCT_CONFIGS:
+        path = tmp_path / f"{product}.parquet"
+        assert path.exists()
+        df = pd.read_parquet(path)
+        assert ROW_COUNT_RANGE[0] <= len(df) <= ROW_COUNT_RANGE[1]
+
+
+def test_main_is_reproducible(tmp_path):
+    out1 = tmp_path / "run1"
+    out2 = tmp_path / "run2"
+    main(output_dir=out1, now=FIXED_NOW)
+    main(output_dir=out2, now=FIXED_NOW)
+    for product in PRODUCT_CONFIGS:
+        df1 = pd.read_parquet(out1 / f"{product}.parquet")
+        df2 = pd.read_parquet(out2 / f"{product}.parquet")
+        pd.testing.assert_frame_equal(df1, df2)

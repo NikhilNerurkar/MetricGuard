@@ -202,3 +202,28 @@ def _inject_messiness(
         df.loc[reorder_idx, timestamp_col] = shifted.dt.strftime("%Y-%m-%dT%H:%M:%S")
 
     return df
+
+
+def generate_product_events(
+    product: str, rng: np.random.Generator, now: datetime | None = None
+) -> pd.DataFrame:
+    config = PRODUCT_CONFIGS[product]
+    now = now or datetime.now(timezone.utc)
+    n = int(rng.integers(ROW_COUNT_RANGE[0], ROW_COUNT_RANGE[1] + 1))
+    canonical = _generate_canonical_events(n, config["surfaces"], rng, now)
+    drifted = _apply_schema_drift(canonical, product, config, rng)
+    return _inject_messiness(drifted, config, rng)
+
+
+def main(output_dir: Path = OUTPUT_DIR, now: datetime | None = None) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(SEED)
+    for product in PRODUCT_CONFIGS:
+        df = generate_product_events(product, rng, now=now)
+        path = output_dir / f"{product}.parquet"
+        df.to_parquet(path, engine="pyarrow", index=False)
+        print(f"{product}: wrote {len(df)} rows to {path}")
+
+
+if __name__ == "__main__":
+    main()
