@@ -264,6 +264,31 @@ def test_build_fact_sessions():
     con.close()
 
 
+def test_build_fact_sessions_null_duration_is_not_qualifying():
+    events = pd.DataFrame({
+        "source_product": ["facebook"],
+        "native_event_id": ["fb-99"],
+        "native_user_id": ["999"],
+        "event_type": ["content_view"],
+        "event_timestamp": pd.to_datetime(["2026-01-01T10:00:00"]),
+        "raw_country_code": ["US"],
+        "country_iso2": ["US"],
+        "session_duration_seconds": [None],
+        "bot_probability_score": [0.01],
+        "product_surface": ["Feed"],
+    })
+    con = _connection_with_events(events)
+    _build_dim_users(con)
+    _build_dim_product(con)
+    _build_dim_geography(con)
+    _build_fact_sessions(con)
+    result = con.sql("SELECT * FROM fact_sessions").df()
+    assert len(result) == 1
+    assert result["is_qualifying_session"].iloc[0] == False
+    assert pd.notna(result["is_qualifying_session"].iloc[0])
+    con.close()
+
+
 def test_main_builds_warehouse(tmp_path):
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
