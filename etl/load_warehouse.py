@@ -208,3 +208,52 @@ def _build_dim_date(con: duckdb.DuckDBPyConnection) -> None:
             )) AS d
         )
     """)
+
+
+def _build_fact_sessions(con: duckdb.DuckDBPyConnection) -> None:
+    con.sql(f"""
+        CREATE OR REPLACE TABLE fact_sessions AS
+        SELECT
+            ROW_NUMBER() OVER () AS session_id,
+            u.user_id,
+            p.product_surface_id,
+            g.country_id,
+            CAST(e.event_timestamp AS DATE) AS event_date,
+            e.session_duration_seconds,
+            e.bot_probability_score,
+            COALESCE(
+                e.session_duration_seconds >= {QUALIFYING_MIN_DURATION_SECONDS}
+                AND e.bot_probability_score < {QUALIFYING_MAX_BOT_SCORE},
+                FALSE
+            ) AS is_qualifying_session,
+            e.event_type,
+            e.native_event_id,
+            e.source_product
+        FROM all_events e
+        JOIN dim_users u
+            ON u.source_product = e.source_product AND u.native_user_id = e.native_user_id
+        JOIN dim_product p
+            ON p.product_family = e.source_product AND p.product_surface = e.product_surface
+        LEFT JOIN dim_geography g
+            ON g.country_iso2 IS NOT DISTINCT FROM e.country_iso2
+    """)
+
+
+def main(raw_dir: Path = RAW_DIR, warehouse_path: Path = WAREHOUSE_PATH) -> None:
+    warehouse_path.parent.mkdir(parents=True, exist_ok=True)
+    all_events = load_all_events(raw_dir)
+    print_data_quality_report(all_events)
+
+    con = duckdb.connect(str(warehouse_path))
+    con.register("all_events", all_events)
+    _build_dim_users(con)
+    _build_dim_product(con)
+    _build_dim_geography(con)
+    _build_dim_date(con)
+    _build_fact_sessions(con)
+    con.close()
+    print(f"Warehouse written to {warehouse_path}")
+
+
+if __name__ == "__main__":
+    main()

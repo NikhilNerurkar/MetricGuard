@@ -236,3 +236,48 @@ def test_build_dim_date():
     assert result["date"].iloc[-1] == pd.Timestamp("2026-01-04")
     assert (result["year"] == 2026).all()
     con.close()
+
+
+from etl.load_warehouse import (
+    _build_fact_sessions, _build_dim_users, _build_dim_product, _build_dim_geography,
+    main,
+)
+
+
+def test_build_fact_sessions():
+    con = _connection_with_events(_sample_all_events())
+    _build_dim_users(con)
+    _build_dim_product(con)
+    _build_dim_geography(con)
+    _build_fact_sessions(con)
+    result = con.sql("SELECT * FROM fact_sessions ORDER BY session_id").df()
+    assert len(result) == 7
+    assert list(result.columns) == [
+        "session_id", "user_id", "product_surface_id", "country_id", "event_date",
+        "session_duration_seconds", "bot_probability_score", "is_qualifying_session",
+        "event_type", "native_event_id", "source_product",
+    ]
+    assert result["user_id"].notna().all()
+    assert result["product_surface_id"].notna().all()
+    assert result["country_id"].notna().all()
+    assert int(result["is_qualifying_session"].sum()) == 3
+    con.close()
+
+
+def test_main_builds_warehouse(tmp_path):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    FACEBOOK_RAW.to_parquet(raw_dir / "facebook.parquet")
+    INSTAGRAM_RAW.to_parquet(raw_dir / "instagram.parquet")
+    THREADS_RAW.to_parquet(raw_dir / "threads.parquet")
+    warehouse_path = tmp_path / "warehouse" / "metricguard.duckdb"
+
+    main(raw_dir=raw_dir, warehouse_path=warehouse_path)
+
+    assert warehouse_path.exists()
+    con = duckdb.connect(str(warehouse_path))
+    tables = {row[0] for row in con.sql("SHOW TABLES").fetchall()}
+    assert tables == {"dim_users", "dim_product", "dim_geography", "dim_date", "fact_sessions"}
+    fact_count = con.sql("SELECT COUNT(*) FROM fact_sessions").fetchone()[0]
+    assert fact_count == 6
+    con.close()
