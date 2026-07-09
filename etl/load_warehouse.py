@@ -49,3 +49,55 @@ def _resolve_country_iso2(raw_value) -> str | None:
     except LookupError:
         return None
     return matches[0].alpha_2 if matches else None
+
+
+def _standardize_facebook(df: pd.DataFrame) -> pd.DataFrame:
+    return pd.DataFrame({
+        "source_product": "facebook",
+        "native_event_id": df["event_id"].astype(str),
+        "native_user_id": df["user_id"].astype(str),
+        "event_type": df["event_type"],
+        "event_timestamp": pd.to_datetime(df["timestamp"], format="%Y-%m-%dT%H:%M:%S"),
+        "raw_country_code": df["country_code"],
+        "country_iso2": df["country_code"].apply(_resolve_country_iso2),
+        "session_duration_seconds": df["session_duration_seconds"],
+        "bot_probability_score": df["bot_probability_score"],
+        "product_surface": df["product_surface"],
+    })
+
+
+def _standardize_instagram(df: pd.DataFrame) -> pd.DataFrame:
+    return pd.DataFrame({
+        "source_product": "instagram",
+        "native_event_id": df["event_id"].astype(str),
+        "native_user_id": df["uid"].astype(str),
+        "event_type": df["event_type"],
+        "event_timestamp": pd.to_datetime(df["timestamp"], unit="s"),
+        "raw_country_code": df["country_code"],
+        "country_iso2": df["country_code"].apply(_resolve_country_iso2),
+        "session_duration_seconds": df["session_duration_seconds"],
+        "bot_probability_score": df["bot_probability_score"],
+        "product_surface": df["product_surface"],
+    })
+
+
+def _standardize_threads(df: pd.DataFrame) -> pd.DataFrame:
+    return pd.DataFrame({
+        "source_product": "threads",
+        "native_event_id": df["evt_id"].astype(str),
+        "native_user_id": df["account_id"].astype(str),
+        "event_type": df["event_type"],
+        "event_timestamp": pd.to_datetime(df["timestamp"], format="%Y-%m-%dT%H:%M:%S"),
+        "raw_country_code": df["country_code"],
+        "country_iso2": df["country_code"].apply(_resolve_country_iso2),
+        "session_duration_seconds": df["session_duration_seconds"],
+        "bot_probability_score": df["bot_probability_score"],
+        "product_surface": df["product_surface"],
+    })
+
+
+def load_all_events(raw_dir: Path) -> pd.DataFrame:
+    facebook = _standardize_facebook(pd.read_parquet(raw_dir / "facebook.parquet"))
+    instagram = _standardize_instagram(pd.read_parquet(raw_dir / "instagram.parquet"))
+    threads = _standardize_threads(pd.read_parquet(raw_dir / "threads.parquet"))
+    return pd.concat([facebook, instagram, threads], ignore_index=True)
