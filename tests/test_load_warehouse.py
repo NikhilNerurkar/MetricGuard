@@ -189,7 +189,9 @@ def test_build_dim_users():
     fb_222 = result[
         (result["source_product"] == "facebook") & (result["native_user_id"] == "222")
     ].iloc[0]
-    assert str(fb_222["first_seen_date"]) == "2026-01-02"
+    assert fb_222["first_seen_date"] == pd.Timestamp("2026-01-02")
+    # Verify the column is a proper datetime type, not a string/object
+    assert result["first_seen_date"].dtype.kind == 'M'  # 'M' is datetime64 kind
     con.close()
 
 

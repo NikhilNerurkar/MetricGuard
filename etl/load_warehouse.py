@@ -140,7 +140,7 @@ def _build_dim_users(con: duckdb.DuckDBPyConnection) -> None:
             source_product,
             native_user_id,
             'active' AS account_status,
-            CAST(MIN(CAST(event_timestamp AS DATE)) AS VARCHAR) AS first_seen_date
+            MIN(CAST(event_timestamp AS DATE)) AS first_seen_date
         FROM all_events
         GROUP BY source_product, native_user_id
     """)
