@@ -487,7 +487,7 @@ def test_build_dim_users():
     fb_222 = result[
         (result["source_product"] == "facebook") & (result["native_user_id"] == "222")
     ].iloc[0]
-    assert str(fb_222["first_seen_date"]) == "2026-01-02"
+    assert fb_222["first_seen_date"] == pd.Timestamp("2026-01-02")
     con.close()
 
 
@@ -595,8 +595,8 @@ def test_build_dim_date():
     result = con.sql("SELECT * FROM dim_date ORDER BY date").df()
     assert len(result) == 4
     assert list(result.columns) == ["date", "day_of_week", "week", "month", "quarter", "year"]
-    assert str(result["date"].iloc[0]) == "2026-01-01"
-    assert str(result["date"].iloc[-1]) == "2026-01-04"
+    assert result["date"].iloc[0] == pd.Timestamp("2026-01-01")
+    assert result["date"].iloc[-1] == pd.Timestamp("2026-01-04")
     assert (result["year"] == 2026).all()
     con.close()
 ```
