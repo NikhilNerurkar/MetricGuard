@@ -101,3 +101,32 @@ def load_all_events(raw_dir: Path) -> pd.DataFrame:
     instagram = _standardize_instagram(pd.read_parquet(raw_dir / "instagram.parquet"))
     threads = _standardize_threads(pd.read_parquet(raw_dir / "threads.parquet"))
     return pd.concat([facebook, instagram, threads], ignore_index=True)
+
+
+def print_data_quality_report(all_events: pd.DataFrame) -> None:
+    print("=== Data Quality Report ===")
+    for product in ["facebook", "instagram", "threads"]:
+        count = int((all_events["source_product"] == product).sum())
+        print(f"{product}: {count} rows")
+    print(f"fact_sessions (total): {len(all_events)} rows")
+
+    country_null_rate = all_events["country_iso2"].isna().mean()
+    duration_null_rate = all_events["session_duration_seconds"].isna().mean()
+    print(f"country_iso2 null rate: {country_null_rate:.2%}")
+    print(f"session_duration_seconds null rate: {duration_null_rate:.2%}")
+
+    for product in ["facebook", "instagram", "threads"]:
+        subset = all_events[all_events["source_product"] == product]
+        dup_count = int(subset["native_event_id"].duplicated().sum())
+        print(f"{product}: {dup_count} duplicate native_event_id values")
+
+    duration = all_events["session_duration_seconds"]
+    outlier_mask = (duration < 0) | (duration > DURATION_OUTLIER_THRESHOLD_SECONDS)
+    for product in ["facebook", "instagram", "threads"]:
+        product_mask = all_events["source_product"] == product
+        count = int((outlier_mask & product_mask).sum())
+        print(f"{product}: {count} duration outliers (negative or > 24h)")
+
+    unresolved_mask = all_events["country_iso2"].isna() & all_events["raw_country_code"].notna()
+    unresolved = sorted(all_events.loc[unresolved_mask, "raw_country_code"].unique().tolist())
+    print(f"Unresolved country values ({len(unresolved)}): {unresolved[:20]}")

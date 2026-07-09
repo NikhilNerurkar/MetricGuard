@@ -115,3 +115,52 @@ def test_load_all_events(tmp_path):
     assert len(result) == 6
     assert set(result["source_product"].unique()) == {"facebook", "instagram", "threads"}
     assert list(result.columns) == _COMMON_COLUMNS
+
+
+from etl.load_warehouse import print_data_quality_report
+
+
+def _sample_all_events() -> pd.DataFrame:
+    return pd.DataFrame({
+        "source_product": [
+            "facebook", "facebook", "facebook",
+            "instagram", "instagram",
+            "threads", "threads",
+        ],
+        "native_event_id": ["fb-1", "fb-2", "fb-2", "ig-1", "ig-2", "th-1", "th-2"],
+        "native_user_id": ["111", "222", "222", "555", "666", "333", "444"],
+        "event_type": [
+            "session_start", "content_view", "content_view",
+            "session_start", "content_action",
+            "session_start", "content_view",
+        ],
+        "event_timestamp": pd.to_datetime([
+            "2026-01-01T10:00:00", "2026-01-02T11:30:00", "2026-01-02T11:30:00",
+            "2026-01-03T09:00:00", "2026-01-03T09:15:00",
+            "2026-01-01T10:00:00", "2026-01-04T08:00:00",
+        ]),
+        "raw_country_code": ["US", None, None, "United States", "NGA", "USA", "Nowhereland"],
+        "country_iso2": ["US", None, None, "US", "NG", "US", None],
+        "session_duration_seconds": [120.5, None, None, 45.0, 900_000.0, 60.0, -10.0],
+        "bot_probability_score": [0.01, 0.2, 0.2, 0.03, 0.5, 0.02, 0.04],
+        "product_surface": ["Feed", "Groups", "Groups", "Feed", "Reels", "Feed", "Search"],
+    })
+
+
+def test_print_data_quality_report(capsys):
+    print_data_quality_report(_sample_all_events())
+    captured = capsys.readouterr().out
+    assert "facebook: 3 rows" in captured
+    assert "instagram: 2 rows" in captured
+    assert "threads: 2 rows" in captured
+    assert "fact_sessions (total): 7 rows" in captured
+    assert "country_iso2 null rate: 42.86%" in captured
+    assert "session_duration_seconds null rate: 28.57%" in captured
+    assert "facebook: 1 duplicate native_event_id values" in captured
+    assert "instagram: 0 duplicate native_event_id values" in captured
+    assert "threads: 0 duplicate native_event_id values" in captured
+    assert "facebook: 0 duration outliers" in captured
+    assert "instagram: 1 duration outliers" in captured
+    assert "threads: 1 duration outliers" in captured
+    assert "Unresolved country values (1)" in captured
+    assert "Nowhereland" in captured
