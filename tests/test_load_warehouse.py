@@ -206,3 +206,33 @@ def test_build_dim_product():
     assert (result["display_name"] == result["product_surface"]).all()
     assert result["product_surface_id"].nunique() == 6
     con.close()
+
+
+from etl.load_warehouse import _build_dim_geography, _build_dim_date
+
+
+def test_build_dim_geography():
+    con = _connection_with_events(_sample_all_events())
+    _build_dim_geography(con)
+    result = con.sql("SELECT * FROM dim_geography ORDER BY country_id").df()
+    assert list(result.columns) == ["country_id", "country_iso2", "country_name", "region", "subregion"]
+    assert set(result["country_iso2"].tolist()) == {"US", "NG", None}
+    us_row = result[result["country_iso2"] == "US"].iloc[0]
+    assert us_row["country_name"] == "United States"
+    assert us_row["region"] == "Americas"
+    null_row = result[result["country_iso2"].isna()].iloc[0]
+    assert null_row["region"] == "Unknown"
+    assert null_row["subregion"] == "Unknown"
+    con.close()
+
+
+def test_build_dim_date():
+    con = _connection_with_events(_sample_all_events())
+    _build_dim_date(con)
+    result = con.sql("SELECT * FROM dim_date ORDER BY date").df()
+    assert len(result) == 4
+    assert list(result.columns) == ["date", "day_of_week", "week", "month", "quarter", "year"]
+    assert result["date"].iloc[0] == pd.Timestamp("2026-01-01")
+    assert result["date"].iloc[-1] == pd.Timestamp("2026-01-04")
+    assert (result["year"] == 2026).all()
+    con.close()

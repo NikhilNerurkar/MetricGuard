@@ -156,3 +156,55 @@ def _build_dim_product(con: duckdb.DuckDBPyConnection) -> None:
             product_surface AS display_name
         FROM (SELECT DISTINCT source_product, product_surface FROM all_events)
     """)
+
+
+def _build_dim_geography(con: duckdb.DuckDBPyConnection) -> None:
+    distinct_countries = con.sql(
+        "SELECT DISTINCT country_iso2 FROM all_events"
+    ).df()["country_iso2"].tolist()
+
+    rows = []
+    for iso2 in distinct_countries:
+        if iso2 is None:
+            rows.append({
+                "country_iso2": None,
+                "country_name": None,
+                "region": "Unknown",
+                "subregion": "Unknown",
+            })
+            continue
+        match = pycountry.countries.get(alpha_2=iso2)
+        country_name = match.name if match else None
+        region, subregion = _CONTINENT_MAP.get(iso2, ("Unknown", "Unknown"))
+        rows.append({
+            "country_iso2": iso2,
+            "country_name": country_name,
+            "region": region,
+            "subregion": subregion,
+        })
+
+    geography_df = pd.DataFrame(rows, columns=["country_iso2", "country_name", "region", "subregion"])
+    geography_df.insert(0, "country_id", range(1, len(geography_df) + 1))
+
+    con.register("_dim_geography_stage", geography_df)
+    con.sql("CREATE OR REPLACE TABLE dim_geography AS SELECT * FROM _dim_geography_stage")
+
+
+def _build_dim_date(con: duckdb.DuckDBPyConnection) -> None:
+    con.sql("""
+        CREATE OR REPLACE TABLE dim_date AS
+        SELECT
+            d::DATE AS date,
+            DAYNAME(d) AS day_of_week,
+            WEEK(d) AS week,
+            MONTH(d) AS month,
+            QUARTER(d) AS quarter,
+            YEAR(d) AS year
+        FROM (
+            SELECT UNNEST(GENERATE_SERIES(
+                (SELECT MIN(CAST(event_timestamp AS DATE)) FROM all_events),
+                (SELECT MAX(CAST(event_timestamp AS DATE)) FROM all_events),
+                INTERVAL 1 DAY
+            )) AS d
+        )
+    """)
