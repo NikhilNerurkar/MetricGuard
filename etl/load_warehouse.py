@@ -130,3 +130,29 @@ def print_data_quality_report(all_events: pd.DataFrame) -> None:
     unresolved_mask = all_events["country_iso2"].isna() & all_events["raw_country_code"].notna()
     unresolved = sorted(all_events.loc[unresolved_mask, "raw_country_code"].unique().tolist())
     print(f"Unresolved country values ({len(unresolved)}): {unresolved[:20]}")
+
+
+def _build_dim_users(con: duckdb.DuckDBPyConnection) -> None:
+    con.sql("""
+        CREATE OR REPLACE TABLE dim_users AS
+        SELECT
+            ROW_NUMBER() OVER (ORDER BY source_product, native_user_id) AS user_id,
+            source_product,
+            native_user_id,
+            'active' AS account_status,
+            CAST(MIN(CAST(event_timestamp AS DATE)) AS VARCHAR) AS first_seen_date
+        FROM all_events
+        GROUP BY source_product, native_user_id
+    """)
+
+
+def _build_dim_product(con: duckdb.DuckDBPyConnection) -> None:
+    con.sql("""
+        CREATE OR REPLACE TABLE dim_product AS
+        SELECT
+            ROW_NUMBER() OVER (ORDER BY source_product, product_surface) AS product_surface_id,
+            source_product AS product_family,
+            product_surface,
+            product_surface AS display_name
+        FROM (SELECT DISTINCT source_product, product_surface FROM all_events)
+    """)

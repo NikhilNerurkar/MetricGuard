@@ -1,5 +1,6 @@
 import pandas as pd
 import pytest
+import duckdb
 
 from etl.load_warehouse import _resolve_country_iso2
 
@@ -164,3 +165,42 @@ def test_print_data_quality_report(capsys):
     assert "threads: 1 duration outliers" in captured
     assert "Unresolved country values (1)" in captured
     assert "Nowhereland" in captured
+
+
+from etl.load_warehouse import _build_dim_users, _build_dim_product
+
+
+def _connection_with_events(all_events: pd.DataFrame) -> duckdb.DuckDBPyConnection:
+    con = duckdb.connect(":memory:")
+    con.register("all_events", all_events)
+    return con
+
+
+def test_build_dim_users():
+    con = _connection_with_events(_sample_all_events())
+    _build_dim_users(con)
+    result = con.sql("SELECT * FROM dim_users ORDER BY source_product, native_user_id").df()
+    assert len(result) == 6
+    assert list(result.columns) == [
+        "user_id", "source_product", "native_user_id", "account_status", "first_seen_date",
+    ]
+    assert result["user_id"].nunique() == 6
+    assert (result["account_status"] == "active").all()
+    fb_222 = result[
+        (result["source_product"] == "facebook") & (result["native_user_id"] == "222")
+    ].iloc[0]
+    assert str(fb_222["first_seen_date"]) == "2026-01-02"
+    con.close()
+
+
+def test_build_dim_product():
+    con = _connection_with_events(_sample_all_events())
+    _build_dim_product(con)
+    result = con.sql("SELECT * FROM dim_product ORDER BY product_family, product_surface").df()
+    assert len(result) == 6
+    assert list(result.columns) == [
+        "product_surface_id", "product_family", "product_surface", "display_name",
+    ]
+    assert (result["display_name"] == result["product_surface"]).all()
+    assert result["product_surface_id"].nunique() == 6
+    con.close()
